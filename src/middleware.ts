@@ -7,26 +7,28 @@ import {
   StoreApi,
 } from './vanilla'
 
-export const redux = <S extends State, A extends { type: unknown }>(
-  reducer: (state: S, action: A) => S,
-  initial: S
-) => (
-  set: SetState<S>,
-  get: GetState<S>,
-  api: StoreApi<S> & {
-    dispatch?: (a: A) => A
-    devtools?: any
-  }
-): S & { dispatch: (a: A) => A } => {
-  api.dispatch = (action: A) => {
-    set((state: S) => reducer(state, action))
-    if (api.devtools) {
-      api.devtools.send(api.devtools.prefix + action.type, get())
+export const redux =
+  <S extends State, A extends { type: unknown }>(
+    reducer: (state: S, action: A) => S,
+    initial: S
+  ) =>
+  (
+    set: SetState<S>,
+    get: GetState<S>,
+    api: StoreApi<S> & {
+      dispatch?: (a: A) => A
+      devtools?: any
     }
-    return action
+  ): S & { dispatch: (a: A) => A } => {
+    api.dispatch = (action: A) => {
+      set((state: S) => reducer(state, action))
+      if (api.devtools) {
+        api.devtools.send(api.devtools.prefix + action.type, get())
+      }
+      return action
+    }
+    return { dispatch: api.dispatch, ...initial }
   }
-  return { dispatch: api.dispatch, ...initial }
-}
 
 type NamedSet<T extends State> = {
   <K extends keyof T>(
@@ -36,112 +38,113 @@ type NamedSet<T extends State> = {
   ): void
 }
 
-export const devtools = <S extends State>(
-  fn: (set: NamedSet<S>, get: GetState<S>, api: StoreApi<S>) => S,
-  prefix?: string
-) => (
-  set: SetState<S>,
-  get: GetState<S>,
-  api: StoreApi<S> & { dispatch?: unknown; devtools?: any }
-): S => {
-  let extension
-  try {
-    extension =
-      (window as any).__REDUX_DEVTOOLS_EXTENSION__ ||
-      (window as any).top.__REDUX_DEVTOOLS_EXTENSION__
-  } catch {}
+export const devtools =
+  <S extends State>(
+    fn: (set: NamedSet<S>, get: GetState<S>, api: StoreApi<S>) => S,
+    prefix?: string
+  ) =>
+  (
+    set: SetState<S>,
+    get: GetState<S>,
+    api: StoreApi<S> & { dispatch?: unknown; devtools?: any }
+  ): S => {
+    let extension
+    try {
+      extension =
+        (window as any).__REDUX_DEVTOOLS_EXTENSION__ ||
+        (window as any).top.__REDUX_DEVTOOLS_EXTENSION__
+    } catch {}
 
-  if (!extension) {
-    if (
-      process.env.NODE_ENV === 'development' &&
-      typeof window !== 'undefined'
-    ) {
-      console.warn('Please install/enable Redux devtools extension')
-    }
-    api.devtools = null
-    return fn(set, get, api)
-  }
-  const namedSet: NamedSet<S> = (state, replace, name) => {
-    set(state, replace)
-    if (!api.dispatch) {
-      api.devtools.send(api.devtools.prefix + (name || 'action'), get())
-    }
-  }
-  const initialState = fn(namedSet, get, api)
-  if (!api.devtools) {
-    const savedSetState = api.setState
-    api.setState = <K extends keyof S>(
-      state: PartialState<S, K>,
-      replace?: boolean
-    ) => {
-      savedSetState(state, replace)
-      api.devtools.send(api.devtools.prefix + 'setState', api.getState())
-    }
-    api.devtools = extension.connect({ name: prefix })
-    api.devtools.prefix = prefix ? `${prefix} > ` : ''
-    api.devtools.subscribe((message: any) => {
-      if (message.type === 'DISPATCH' && message.state) {
-        const ignoreState =
-          message.payload.type === 'JUMP_TO_ACTION' ||
-          message.payload.type === 'JUMP_TO_STATE'
-        if (!api.dispatch && !ignoreState) {
-          api.setState(JSON.parse(message.state))
-        } else {
-          savedSetState(JSON.parse(message.state))
-        }
-      } else if (
-        message.type === 'DISPATCH' &&
-        message.payload?.type === 'COMMIT'
+    if (!extension) {
+      if (
+        process.env.NODE_ENV === 'development' &&
+        typeof window !== 'undefined'
       ) {
-        api.devtools.init(api.getState())
-      } else if (
-        message.type === 'DISPATCH' &&
-        message.payload?.type === 'IMPORT_STATE'
-      ) {
-        const actions = message.payload.nextLiftedState?.actionsById
-        const computedStates =
-          message.payload.nextLiftedState?.computedStates || []
-
-        computedStates.forEach(
-          ({ state }: { state: PartialState<S> }, index: number) => {
-            const action = actions[index] || api.devtools.prefix + 'setState'
-
-            if (index === 0) {
-              api.devtools.init(state)
-            } else {
-              savedSetState(state)
-              api.devtools.send(action, api.getState())
-            }
-          }
-        )
+        console.warn('Please install/enable Redux devtools extension')
       }
-    })
-    api.devtools.init(initialState)
+      api.devtools = null
+      return fn(set, get, api)
+    }
+    const namedSet: NamedSet<S> = (state, replace, name) => {
+      set(state, replace)
+      if (!api.dispatch) {
+        api.devtools.send(api.devtools.prefix + (name || 'action'), get())
+      }
+    }
+    const initialState = fn(namedSet, get, api)
+    if (!api.devtools) {
+      const savedSetState = api.setState
+      api.setState = <K extends keyof S>(
+        state: PartialState<S, K>,
+        replace?: boolean
+      ) => {
+        savedSetState(state, replace)
+        api.devtools.send(api.devtools.prefix + 'setState', api.getState())
+      }
+      api.devtools = extension.connect({ name: prefix })
+      api.devtools.prefix = prefix ? `${prefix} > ` : ''
+      api.devtools.subscribe((message: any) => {
+        if (message.type === 'DISPATCH' && message.state) {
+          const ignoreState =
+            message.payload.type === 'JUMP_TO_ACTION' ||
+            message.payload.type === 'JUMP_TO_STATE'
+          if (!api.dispatch && !ignoreState) {
+            api.setState(JSON.parse(message.state))
+          } else {
+            savedSetState(JSON.parse(message.state))
+          }
+        } else if (
+          message.type === 'DISPATCH' &&
+          message.payload?.type === 'COMMIT'
+        ) {
+          api.devtools.init(api.getState())
+        } else if (
+          message.type === 'DISPATCH' &&
+          message.payload?.type === 'IMPORT_STATE'
+        ) {
+          const actions = message.payload.nextLiftedState?.actionsById
+          const computedStates =
+            message.payload.nextLiftedState?.computedStates || []
+
+          computedStates.forEach(
+            ({ state }: { state: PartialState<S> }, index: number) => {
+              const action = actions[index] || api.devtools.prefix + 'setState'
+
+              if (index === 0) {
+                api.devtools.init(state)
+              } else {
+                savedSetState(state)
+                api.devtools.send(action, api.getState())
+              }
+            }
+          )
+        }
+      })
+      api.devtools.init(initialState)
+    }
+    return initialState
   }
-  return initialState
-}
 
 type Combine<T, U> = Omit<T, keyof U> & U
-export const combine = <
-  PrimaryState extends State,
-  SecondaryState extends State
->(
-  initialState: PrimaryState,
-  create: (
-    set: SetState<PrimaryState>,
-    get: GetState<PrimaryState>,
-    api: StoreApi<PrimaryState>
-  ) => SecondaryState
-): StateCreator<Combine<PrimaryState, SecondaryState>> => (set, get, api) =>
-  Object.assign(
-    {},
-    initialState,
-    create(
-      (set as unknown) as SetState<PrimaryState>,
-      (get as unknown) as GetState<PrimaryState>,
-      (api as unknown) as StoreApi<PrimaryState>
+export const combine =
+  <PrimaryState extends State, SecondaryState extends State>(
+    initialState: PrimaryState,
+    create: (
+      set: SetState<PrimaryState>,
+      get: GetState<PrimaryState>,
+      api: StoreApi<PrimaryState>
+    ) => SecondaryState
+  ): StateCreator<Combine<PrimaryState, SecondaryState>> =>
+  (set, get, api) =>
+    Object.assign(
+      {},
+      initialState,
+      create(
+        set as unknown as SetState<PrimaryState>,
+        get as unknown as GetState<PrimaryState>,
+        api as unknown as StoreApi<PrimaryState>
+      )
     )
-  )
 
 type StateStorage = {
   getItem: (name: string) => string | null | Promise<string | null>
@@ -199,105 +202,163 @@ type PersistOptions<S> = {
   migrate?: (persistedState: any, version: number) => S | Promise<S>
 }
 
-export const persist = <S extends State>(
-  config: StateCreator<S>,
-  options: PersistOptions<S>
-) => (set: SetState<S>, get: GetState<S>, api: StoreApi<S>): S => {
-  const {
-    name,
-    getStorage = () => localStorage,
-    serialize = JSON.stringify,
-    deserialize = JSON.parse,
-    blacklist,
-    whitelist,
-    onRehydrateStorage,
-    version = 0,
-    migrate,
-  } = options || {}
+export const persist =
+  <S extends State>(config: StateCreator<S>, options: PersistOptions<S>) =>
+  (set: SetState<S>, get: GetState<S>, api: StoreApi<S>): S => {
+    const {
+      name,
+      getStorage = () => localStorage,
+      serialize = JSON.stringify,
+      deserialize = JSON.parse,
+      blacklist,
+      whitelist,
+      onRehydrateStorage,
+      version = 0,
+      migrate,
+    } = options || {}
 
-  let storage: StateStorage | undefined
+    let storage: StateStorage | undefined
 
-  try {
-    storage = getStorage()
-  } catch (e) {
-    // prevent error if the storage is not defined (e.g. when server side rendering a page)
-  }
+    try {
+      storage = getStorage()
+    } catch (e) {
+      // prevent error if the storage is not defined (e.g. when server side rendering a page)
+    }
 
-  if (!storage) {
+    if (!storage) {
+      return config(
+        (...args) => {
+          console.warn(
+            `Persist middleware: unable to update ${name}, the given storage is currently unavailable.`
+          )
+          set(...args)
+        },
+        get,
+        api
+      )
+    }
+
+    const setItem = () => {
+      const state = { ...get() }
+
+      if (whitelist) {
+        ;(Object.keys(state) as (keyof S)[]).forEach((key) => {
+          !whitelist.includes(key) && delete state[key]
+        })
+      }
+      if (blacklist) {
+        blacklist.forEach((key) => delete state[key])
+      }
+      if (serialize.constructor.name === 'AsyncFunction') {
+        return (serialize({ state, version }) as Promise<string>).then(
+          (serialized) => storage?.setItem(name, serialized)
+        )
+      } else {
+        return storage?.setItem(name, serialize({ state, version }) as string)
+      }
+    }
+
+    const savedSetState = api.setState
+
+    api.setState = (state, replace) => {
+      savedSetState(state, replace)
+      void setItem()
+    }
+
+    // rehydrate initial state with existing stored state
+    ;(() => {
+      const postRehydrationCallback = onRehydrateStorage?.(get()) || undefined
+      try {
+        // let storageValue: ReturnType<typeof storage.getItem> = null
+        if (storage.getItem.constructor.name === 'AsyncFunction') {
+          ;(storage.getItem(name) as Promise<string | null>)?.then(
+            (storageValue) => {
+              if (storageValue) {
+                deserialize(storageValue).then((deserializedStorageValue) => {
+                  if (deserializedStorageValue.version !== version) {
+                    if (migrate?.constructor.name === 'AsyncFunction') {
+                      ;(
+                        migrate?.(
+                          deserializedStorageValue.state,
+                          deserializedStorageValue.version
+                        ) as Promise<S | null>
+                      )?.then((migratedState) => {
+                        if (migratedState) {
+                          set(migratedState)
+                          setItem()
+                        }
+                      })
+                    } else {
+                      let migratedState = migrate?.(
+                        deserializedStorageValue.state,
+                        deserializedStorageValue.version
+                      )
+                      if (migratedState) {
+                        set(migratedState)
+                        setItem()
+                      }
+                    }
+                  } else {
+                    set(deserializedStorageValue.state)
+                  }
+                })
+                // if versions mismatch, run migration
+              }
+            }
+          )
+        } else {
+          let storageValue = storage.getItem(name)
+          if (storageValue) {
+            let deserializedStorageValue = deserialize(storageValue)
+            if (deserializedStorageValue.version !== version) {
+              let migratedState = migrate?.(
+                deserializedStorageValue.state,
+                deserializedStorageValue.version
+              )
+              if (migratedState) {
+                set(migratedState)
+                setItem()
+              }
+            } else {
+              set(deserializedStorageValue.state)
+            }
+          }
+        }
+        //  storageValue = await storage.getItem(name)
+
+        // if (storageValue) {
+        //   const deserializedStorageValue = await deserialize(storageValue)
+
+        //   // if versions mismatch, run migration
+        //   if (deserializedStorageValue.version !== version) {
+        //     const migratedState = await migrate?.(
+        //       deserializedStorageValue.state,
+        //       deserializedStorageValue.version
+        //     )
+        //     if (migratedState) {
+        //       set(migratedState)
+        //       await setItem()
+        //     }
+        //   } else {
+        //     set(deserializedStorageValue.state)
+        //   }
+        // } else {
+        //   await storage.setItem(name, await serialize({...get() || {}})
+        // }
+      } catch (e) {
+        postRehydrationCallback?.(undefined, e)
+        return
+      }
+
+      postRehydrationCallback?.(get(), undefined)
+    })()
+
     return config(
       (...args) => {
-        console.warn(
-          `Persist middleware: unable to update ${name}, the given storage is currently unavailable.`
-        )
         set(...args)
+        void setItem()
       },
       get,
       api
     )
   }
-
-  const setItem = async () => {
-    const state = { ...get() }
-
-    if (whitelist) {
-      ;(Object.keys(state) as (keyof S)[]).forEach((key) => {
-        !whitelist.includes(key) && delete state[key]
-      })
-    }
-    if (blacklist) {
-      blacklist.forEach((key) => delete state[key])
-    }
-
-    return storage?.setItem(name, await serialize({ state, version }))
-  }
-
-  const savedSetState = api.setState
-
-  api.setState = (state, replace) => {
-    savedSetState(state, replace)
-    void setItem()
-  }
-
-  // rehydrate initial state with existing stored state
-  ;(async () => {
-    const postRehydrationCallback = onRehydrateStorage?.(get()) || undefined
-
-    try {
-      const storageValue = await storage.getItem(name)
-
-      if (storageValue) {
-        const deserializedStorageValue = await deserialize(storageValue)
-
-        // if versions mismatch, run migration
-        if (deserializedStorageValue.version !== version) {
-          const migratedState = await migrate?.(
-            deserializedStorageValue.state,
-            deserializedStorageValue.version
-          )
-          if (migratedState) {
-            set(migratedState)
-            await setItem()
-          }
-        } else {
-          set(deserializedStorageValue.state)
-        }
-      } else {
-        await storage.setItem(name, await serialize({...get() || {}})
-      }
-    } catch (e) {
-      postRehydrationCallback?.(undefined, e)
-      return
-    }
-
-    postRehydrationCallback?.(get(), undefined)
-  })()
-
-  return config(
-    (...args) => {
-      set(...args)
-      void setItem()
-    },
-    get,
-    api
-  )
-}
